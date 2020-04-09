@@ -31,12 +31,21 @@
     character(LEN=Ini_max_string_len) numstr, VectorFileName, &
     InputFile, ScalarFileName, TensorFileName, TotalFileName, LensedFileName,&
     LensedTotFileName, LensPotentialFileName,ScalarCovFileName
-    integer i
+    !mod GF 2019-06-22
+    integer i, int1, int2, int3, int4, int5, int6, int7, int8, int9
+    !mod end
     character(LEN=Ini_max_string_len) TransferFileNames(max_transfer_redshifts), &
     MatterPowerFileNames(max_transfer_redshifts), outroot, version_check
     real(dl) output_factor, nmassive,omnuh2,nu_massless_degeneracy,fractional_number
     real(dl) actual_massless,neff_i
 !    real clock_start, clock_stop ! RH timing	
+    
+    !mod GF 2019-06-22
+    character(LEN=1) buffer1, buffer3, buffer5, buffer7, buffer9, buffer11, buffer13, buffer15, buffer16, buffer17, do_evol
+    character(LEN=23) buffer2, buffer4, buffer6, buffer8, buffer10, buffer12, buffer14
+    character(LEN=Ini_max_string_len) buffer18, outputRoot
+    double precision ombh2, omch2, omaxh2, mass_axion, h0, ns, As
+    !mod end
 
     type (CAMBdata)  :: AxionIsoData ! Adding this for the iso stuff
     type (CAMBdata)  :: AxionAdiData ! Adding this for the iso stuff
@@ -59,7 +68,50 @@ integer badflag
 !call cpu_time(clock_totstart) ! RH timing
 
 ! End axion stuff
+if (GetParamCount()>1) then
+    !mod GF 2019-06-22
+    call getarg(2,buffer1)
+    read(buffer1,*) int1
+    call getarg(3,buffer2)
+    read(buffer2,*) ombh2
+    call getarg(4,buffer3)
+    read(buffer3,*) int2
+    call getarg(5,buffer4)
+    read(buffer4,*) omch2
+    call getarg(6,buffer5)
+    read(buffer5,*) int3
+    call getarg(7,buffer6)
+    read(buffer6,*) omaxh2
+    call getarg(8,buffer7)
+    read(buffer7,*) int4
+    call getarg(9,buffer8)
+    read(buffer8,*) mass_axion
+    call getarg(10,buffer9)
+    read(buffer9,*) int5
+    call getarg(11,buffer10)
+    read(buffer10,*) h0
+    call getarg(12,buffer11)
+    read(buffer11,*) int6
+    call getarg(13,buffer12)
+    read(buffer12,*) ns
+    !GF 2020-03-07
+    call getarg(14,buffer13)
+    read(buffer13,*) int7
+    call getarg(15,buffer14)
+    read(buffer14,*) As
+    !end mod
 
+    !mod GF 2019-06-25
+    call getarg(16,buffer15)
+    read(buffer15,*) int8
+    call getarg(17,buffer16)
+    read(buffer16,*) do_evol
+    call getarg(18,buffer17)
+    read(buffer17,*) int9
+    call getarg(19,buffer18)
+    read(buffer18,*) outputRoot
+    !end mod
+end if
 
     InputFile = ''
     if (GetParamCount() /= 0)  InputFile = GetParam(1)
@@ -70,14 +122,40 @@ integer badflag
 
     Ini_fail_on_not_found = .false.
 
-    outroot = Ini_Read_String('output_root')
-    if (outroot /= '') outroot = trim(outroot) // '_'
+    ! mod GF 2019-06-22
+    if ((int9.eq.9).AND.(GetParamCount()>1)) then
+        outroot=outputRoot
+    else
+        outroot = Ini_Read_String('output_root')
+    end if
+    !end mod
+    
+    if (outroot /= '') then
+        outroot = trim(outroot) // '_'
+        P%OutputRoot=outroot
+    else
+        P%OutputRoot=''
+    end if
 
     highL_unlensed_cl_template = Ini_Read_String_Default('highL_unlensed_cl_template',highL_unlensed_cl_template)
 
     call CAMB_SetDefParams(P)
 
-    P%WantScalars = Ini_Read_Logical('get_scalar_cls')
+    !mod GF 2019-07-04
+    if ((int8.eq.8).AND.(GetParamCount()>1)) then
+        if (do_evol == 'T') then
+            P%WantEvolution= .true.
+        else
+            P%WantEvolution= .false.
+        end if
+    else
+        P%WantEvolution = Ini_Read_Logical('get_evolution')
+
+    end if
+
+    !end mod
+
+    P%WantScalars = Ini_Read_Logical('get_scalar_cls',.false.)
     P%WantVectors = Ini_Read_Logical('get_vector_cls',.false.)
     P%WantTensors = Ini_Read_Logical('get_tensor_cls',.false.)
 
@@ -85,7 +163,7 @@ integer badflag
     output_factor = Ini_Read_Double('CMB_outputscale',1.d0)
 
     P%WantCls= P%WantScalars .or. P%WantTensors .or. P%WantVectors
-
+    
     P%PK_WantTransfer=Ini_Read_Logical('get_transfer')
 
     AccuracyBoost  = Ini_Read_Double('accuracy_boost',AccuracyBoost)
@@ -123,6 +201,8 @@ integer badflag
             P%Max_eta_k_tensor =  Ini_Read_Double('k_eta_max_tensor',Max(500._dl,P%Max_l_tensor*2._dl))
         end if
     endif
+
+
 
 
 
@@ -258,9 +338,6 @@ integer badflag
      
 !	print*, 'hi renee omk', P%omegak, 'omegav', P%omegav, 'grhog', grhog, 'P%grhor', (P%grhor*(c**2.0d0)/((1.d5**2.0d0)))/3.0d0, 'omegah2_rad', P%omegah2_rad 
     
-
-    
-    
     
     
     !JD 08/13 begin changes for nonlinear lensing of CMB + LSS compatibility
@@ -324,6 +401,7 @@ integer badflag
 
     call Reionization_ReadParams(P%Reion, DefIni)
     call InitialPower_ReadParams(P%InitPower, DefIni, P%WantTensors)
+
     call Recombination_ReadParams(P%Recomb, DefIni)
     if (Ini_HasKey('recombination')) then
         i = Ini_Read_Int('recombination',1)
@@ -425,6 +503,33 @@ integer badflag
         end if
     end if
 
+    !mod GF 2019-06-22+2019-07-04
+    if (GetParamCount()>1) then
+        if (int6.eq.6) then
+            P%InitPower%an(1) = ns
+        endif
+        if (int7.eq.7) then
+            P%InitPower%ScalarPowerAmp(1) = As
+        endif
+        if (int5.eq.5) then
+            P%H0 = h0
+        endif
+        if (int4.eq.4) then
+            P%ma = mass_axion
+        endif
+        if (int1.eq.1) then
+            P%omegab = ombh2/((P%H0/100.d0)**2.d0)
+        endif
+        if (int3.eq.3) then
+            P%omegaax = omaxh2/((P%H0/100.d0)**2.d0)
+        endif
+        if (int2.eq.2) then
+            P%omegac = omch2/(P%H0/100.d0)**2.d0
+        endif
+        P%omegav = 1.0d0-P%omegab-P%omegac - P%omegan -P%omegak -P%omegaax -P%omegah2_rad/((P%H0/1.d2)**2.0d0)
+    end if
+    !end mod
+
     call Ini_Close
 
 
@@ -473,6 +578,8 @@ end if
 ! Sound speed is the sound speed only before oscillations (more precisely the adiabatic sound speed)
 !, afterwards fluid representation changes.
 ! For more details see Hlozek et al 2014. arXiv:1410.2896
+
+
 
 !call cpu_time(clock_start) ! RH timing
 ! Run axion background evolution and then with arrays in hand for interpolation, run the regular CAMB

@@ -440,6 +440,7 @@
 
     if (P%omegab<0.001 .or. P%omegac<0 .or. P%omegab>1 .or. P%omegac>3) then
         OK = .false.
+        print *,P%omegab,P%omegac,P%omegav
         write(*,*) 'Your matter densities are strange'
     end if
 

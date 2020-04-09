@@ -138,6 +138,8 @@
 !    call cpu_time(clock_totstart) ! RH timing 
     WantLateTime =  CP%DoLensing .or. num_redshiftwindows > 0
 
+   
+
     if (CP%WantCls) then
         if (CP%WantTensors .and. CP%WantScalars) stop 'CMBMAIN cannot generate tensors and scalars'
         !Use CAMB_GetResults instead
@@ -211,6 +213,12 @@
     end if
     !***note that !$ is the prefix for conditional multi-processor compilation***
     !$ if (ThreadNum /=0) call OMP_SET_NUM_THREADS(ThreadNum)
+
+    ! mod GF 2019-07-04
+    if (CP%WantEvolution) then
+        call DoModeEv(EV)
+    end if
+    !mod end
 
     if (CP%WantCls) then
         if (DebugMsgs .and. Feedbacklevel > 0) write(*,*) 'Set ',Evolve_q%npoints,' source k values'
@@ -807,8 +815,26 @@
     if (CP%WantScalars .and. global_error_flag==0) call CalcScalarSources(EV,taustart)
     if (CP%WantVectors .and. global_error_flag==0) call CalcVectorSources(EV,taustart)
     if (CP%WantTensors .and. global_error_flag==0) call CalcTensorSources(EV,taustart)
+    
 
     end subroutine DoSourcek
+
+    ! mod GF 2019-07-04
+    subroutine DoModeEv(EV)
+    real(dl) taustart
+    type(EvolutionVars) EV
+
+    EV%TransferOnly=.false.
+
+    taustart = GetTauStart(EV%q)
+
+    call GetNumEqns(EV)
+
+    if (CP%WantEvolution .and. global_error_flag==0) call ComputeEvolution(EV,taustart)
+
+    end subroutine DoModeEv
+    ! end mod
+
 
     subroutine GetSourceMem
 
@@ -1033,7 +1059,92 @@
 
     end subroutine SetClosedkValuesFromArr
 
+    !mod GF 2019-07-04
+    subroutine ComputeEvolution(EV, taustart)
+        implicit none
+        type(EvolutionVars) EV, EV_start
+        real(dl) tau,tol1,tauend, tauendDummy, taustart
+        integer i,u,ind,Nk,Nz
+        real(dl) c_start(24),c(24),w(EV%nvar,9), y(EV%nvar), k
+        character(LEN=1024) filename
+        character(LEN=7) format_string
 
+
+        real(dl) delta
+
+        Nk=150
+        Nz=200
+
+        EV_start=EV
+        c_start=c
+
+        w=0
+        y=0
+        call initial(EV,y, taustart)
+        if (global_error_flag/=0) return
+
+        tau=taustart
+        ind=1
+
+
+        
+        tol1=tol/exp(AccuracyBoost-1)
+        format_string = '(e14.3)'
+        filename=trim(CP%OutputRoot)//'evolution.dat'
+        call CreateTxtFile(trim(filename),1)
+
+        print *, 'Computing mode evolution...'
+        print *, 'masses:', CP%ma, EV%m_ax 
+        do u=0,Nk
+            k=real(10)**(real(-4)+(LOG10(CP%transfer%kmax) +4)/real(Nk)*real(u))*(CP%H0/real(100.0))
+            !print *, fixq
+            EV=EV_start
+            EV%q= k
+            EV%q2=EV%q**2
+            EV%q_ix=u
+            w=0
+            y=0
+            c=c_start
+            call initial(EV,y,taustart)
+            tau=taustart
+            ind=1
+            !write (*,*) y
+            if (u.eq.0) then
+                do i=0,Nz
+                    write (1, '(a)', advance='no') ','
+                    tauendDummy = real(10)**(LOG10(taustart)+(LOG10(CP%tau0)-LOG10(taustart))/real(Nz)*real(i))
+                    call GaugeInterface_EvolveScal(EV,tau,y,tauendDummy,tol,ind,c,w)
+                    write (1, format_string, advance='no') y(1)
+                end do
+                write (1,*) ''
+                !reset variables
+                EV=EV_start
+                EV%q= k
+                EV%q2=EV%q**2
+                w=0
+                y=0
+                c=c_start
+                call initial(EV,y,taustart)
+                tau=taustart
+                ind=1
+            end if
+            write (1,format_string,advance='no') k
+
+            do i=0,Nz
+                write (1, '(a)', advance='no') ','
+                tauendDummy = real(10)**(LOG10(taustart)+(LOG10(CP%tau0)-LOG10(taustart))/real(Nz)*real(i))
+                call GaugeInterface_EvolveScal(EV,tau,y,tauendDummy,tol,ind,c,w)
+                delta=(grhoc*y(3)+grhob*y(4))/(grhob+grhoc)
+                
+                write (1, format_string, advance='no') delta
+            end do
+            write (1,*)''
+        end do
+        close(1)
+        print *, 'Done computing mode evolution!'
+
+    end subroutine
+    !end mod
 
     subroutine CalcScalarSources(EV,taustart)
     use Transfer

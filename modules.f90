@@ -58,7 +58,7 @@
     !Nu_best: automatically use mixture which is fastest and most accurate
 
     integer, parameter :: max_Nu = 5 !Maximum number of neutrino species
-    integer, parameter :: max_transfer_redshifts = 500 ! COSMOSIS - alter number of transfer redshifts 
+    integer, parameter :: max_transfer_redshifts = 1000 ! COSMOSIS - alter number of transfer redshifts 
 !    integer, parameter :: max_transfer_redshifts = 150
     integer, parameter :: fileio_unit = 13 !Any number not used elsewhere will do
     integer, parameter :: outNone=1
@@ -108,12 +108,13 @@
     type CAMBparams
 
     logical   :: WantCls, WantTransfer
-    logical   :: WantScalars, WantTensors, WantVectors
+    logical   :: WantScalars, WantTensors, WantVectors, WantEvolution   !mod GF 2019-07-04
     logical   :: DoLensing
     logical   :: want_zstar, want_zdrag     !!JH for updated BAO likelihood.
     logical   :: PK_WantTransfer             !JD 08/13 Added so both NL lensing and PK can be run at the same time
     integer   :: NonLinear
     logical   :: Want_CMB
+    character(LEN=1024)   :: OutputRoot !mod GF 2019-06-25
 
     integer   :: Max_l, Max_l_tensor
     real(dl)  :: Max_eta_k, Max_eta_k_tensor
@@ -267,7 +268,7 @@
     !     lmax is max possible number of l's evaluated
     integer, parameter :: lmax_arr = l0max
 
-    character(LEN=1024) :: highL_unlensed_cl_template = 'HighLExtrapTemplate_lenspotentialCls.dat'
+    character(LEN=1024) :: highL_unlensed_cl_template = '../axionCAMB_mod/HighLExtrapTemplate_lenspotentialCls.dat'
     !fiducial high-accuracy high-L C_L used for making small cosmology-independent numerical corrections
     !to lensing and C_L interpolation. Ideally close to models of interest, but dependence is weak.
     logical :: use_spline_template = .true.
