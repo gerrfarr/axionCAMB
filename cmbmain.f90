@@ -214,12 +214,6 @@
     !***note that !$ is the prefix for conditional multi-processor compilation***
     !$ if (ThreadNum /=0) call OMP_SET_NUM_THREADS(ThreadNum)
 
-    ! mod GF 2019-07-04
-    if (CP%WantEvolution) then
-        call DoModeEv(EV)
-    end if
-    !mod end
-
     if (CP%WantCls) then
         if (DebugMsgs .and. Feedbacklevel > 0) write(*,*) 'Set ',Evolve_q%npoints,' source k values'
 !        clock_start = 0
@@ -263,9 +257,14 @@
 
     endif !WantCls
 
+    ! mod GF 2019-07-04
+    if (CP%WantEvolution) then
+        call ComputeEvolution
+    end if
+    !mod end
     
     ! If transfer functions are requested, set remaining k values and output
-    if (CP%WantTransfer .and. global_error_flag==0) then
+    if (CP%WantTransfer .and. global_error_flag==0 .and. .not. CP%WantEvolution) then
 !       clock_start = 0
 !       call cpu_time(clock_start) ! RH timing 
         call TransferOut
@@ -278,6 +277,7 @@
 !         call cpu_time(clock_stop) ! RH timing 
 !         print*, 'timing for TransferOut in cmbmain', clock_stop - clock_start
     end if
+
 
     if (CP%WantTransfer .and. CP%WantCls .and. WantLateTime &
     .and. (CP%NonLinear==NonLinear_Lens .or. CP%NonLinear==NonLinear_both) .and. global_error_flag==0) then
@@ -819,22 +819,6 @@
 
     end subroutine DoSourcek
 
-    ! mod GF 2019-07-04
-    subroutine DoModeEv(EV)
-    real(dl) taustart
-    type(EvolutionVars) EV
-
-    EV%TransferOnly=.false.
-
-    taustart = GetTauStart(EV%q)
-
-    call GetNumEqns(EV)
-
-    if (CP%WantEvolution .and. global_error_flag==0) call ComputeEvolution(EV,taustart)
-
-    end subroutine DoModeEv
-    ! end mod
-
 
     subroutine GetSourceMem
 
@@ -1059,91 +1043,113 @@
 
     end subroutine SetClosedkValuesFromArr
 
-    !mod GF 2019-07-04
-    subroutine ComputeEvolution(EV, taustart)
+    !mod GF 2020-07-23
+    subroutine ComputeEvolution
         implicit none
-        type(EvolutionVars) EV, EV_start
-        real(dl) tau,tol1,tauend, tauendDummy, taustart
-        integer i,u,ind,Nk,Nz
-        real(dl) c_start(24),c(24),w(EV%nvar,9), y(EV%nvar), k
-        character(LEN=1024) filename
+        integer q_ix, j, Nz
+        real(dl) tau, taustart
+        type(EvolutionVars) EV
+        character(LEN=1024) filename_ev, filename_dev, filename_as
         character(LEN=7) format_string
-
-
-        real(dl) delta
-
-        Nk=150
-        Nz=200
-
-        EV_start=EV
-        c_start=c
-
-        w=0
-        y=0
-        call initial(EV,y, taustart)
+        real data_delta(9,MT%num_q_trans,100)
+        real data_a(MT%num_q_trans,100)
+        
         if (global_error_flag/=0) return
 
-        tau=taustart
-        ind=1
-
-
-        
-        tol1=tol/exp(AccuracyBoost-1)
-        format_string = '(e14.3)'
-        filename=trim(CP%OutputRoot)//'evolution.dat'
-        call CreateTxtFile(trim(filename),1)
-
         print *, 'Computing mode evolution...'
-        print *, 'masses:', CP%ma, EV%m_ax 
-        do u=0,Nk
-            k=real(10)**(real(-4)+(LOG10(CP%transfer%kmax) +4)/real(Nk)*real(u))*(CP%H0/real(100.0))
-            !print *, fixq
-            EV=EV_start
-            EV%q= k
-            EV%q2=EV%q**2
-            EV%q_ix=u
-            w=0
-            y=0
-            c=c_start
-            call initial(EV,y,taustart)
-            tau=taustart
-            ind=1
-            !write (*,*) y
-            if (u.eq.0) then
-                do i=0,Nz
-                    write (1, '(a)', advance='no') ','
-                    tauendDummy = real(10)**(LOG10(taustart)+(LOG10(CP%tau0)-LOG10(taustart))/real(Nz)*real(i))
-                    call GaugeInterface_EvolveScal(EV,tau,y,tauendDummy,tol,ind,c,w)
-                    write (1, format_string, advance='no') y(1)
-                end do
-                write (1,*) ''
-                !reset variables
-                EV=EV_start
-                EV%q= k
-                EV%q2=EV%q**2
-                w=0
-                y=0
-                c=c_start
-                call initial(EV,y,taustart)
-                tau=taustart
-                ind=1
-            end if
-            write (1,format_string,advance='no') k
+        
+        Nz=100
 
-            do i=0,Nz
-                write (1, '(a)', advance='no') ','
-                tauendDummy = real(10)**(LOG10(taustart)+(LOG10(CP%tau0)-LOG10(taustart))/real(Nz)*real(i))
-                call GaugeInterface_EvolveScal(EV,tau,y,tauendDummy,tol,ind,c,w)
-                delta=(grhoc*y(3)+grhob*y(4))/(grhob+grhoc)
-                
-                write (1, format_string, advance='no') delta
+        do q_ix=1,MT%num_q_trans
+            EV%TransferOnly=.true. !in case we want to do something to speed it up
+
+            EV%q= MT%q_trans(q_ix)
+
+            EV%q2=EV%q**2
+            EV%q_ix = q_ix
+
+            tau = GetTauStart(EV%q)
+            taustart=TimeOfz(7.0_dl)
+
+            call GetNumEqns(EV)
+
+!           write(*,*) "q=",EV%q
+
+            call GetEvol(EV, tau, taustart, Nz, data_delta(:, q_ix, :), data_a(q_ix, :))
+
+        end do
+
+        format_string = '(e14.3)'
+        filename_ev=trim(CP%OutputRoot)//'evolution.dat'
+        call CreateTxtFile(trim(filename_ev),1)
+        filename_dev=trim(CP%OutputRoot)//'devolution.dat'
+        call CreateTxtFile(trim(filename_dev),2)
+        filename_as=trim(CP%OutputRoot)//'a_vals.dat'
+        call CreateTxtFile(trim(filename_as),3)
+
+        do q_ix=1,MT%num_q_trans
+            do j=1,Nz
+                write(1, format_string, advance='no') data_delta(9, q_ix, j)
+                write(2, format_string, advance='no') data_delta(8, q_ix, j)
+                write(3, format_string, advance='no') data_a(q_ix, j)
             end do
             write (1,*)''
+            write (2,*)''
+            write (3,*)''
         end do
+
         close(1)
+        close(2)
+        close(3)
         print *, 'Done computing mode evolution!'
 
     end subroutine
+
+    subroutine GetEvol(EV, tau, taustart, Nz, Arr_delta, Arr_a)
+    use Transfer
+    type(EvolutionVars) EV
+    real(dl) tau, tauend, taustart, taunext
+    integer q_ix, j, ind, itf, Nz
+    real(dl) c(24), w(EV%nvar,9), y(EV%nvar)
+    real(dl) atol
+    real Arr_a(:)
+    real Arr_delta(:,:)
+
+    atol=tol/exp(AccuracyBoost-1)
+    if (CP%Transfer%high_precision) atol=atol/10000
+
+    ind=1
+    itf=1
+    call initial(EV,y, tau)
+    if (global_error_flag/=0) return
+    do j=1,Nz
+        tauend = taustart+j*(CP%tau0-taustart)/Nz
+        call GaugeInterface_EvolveScal(EV,tau,y,tauend,atol,ind,c,w)
+        if (global_error_flag/=0) return
+        call outtransf(EV,y,tau,Arr_delta(:,j))
+        Arr_a(j)=y(1)
+
+102     if (CP%WantTransfer.and.itf <= CP%Transfer%num_redshifts) then
+            taunext=taustart+(j+1)*(CP%tau0-taustart)/Nz
+
+            if (abs(tau-tautf(itf)) < 1.e-5_dl .and. abs(tau-tautf(itf))<abs(taunext-tautf(itf))) then
+                MT%TransferData(:,EV%q_ix,itf)=Arr_delta(:,j)
+                itf=itf+1
+                if (j< Nz .and. itf <= CP%Transfer%num_redshifts .and. taunext > tautf(itf)) goto 102
+                
+            else if (tauend < tautf(itf) .and. taunext>tautf(itf)) then
+                call GaugeInterface_EvolveScal(EV,tau,y,tautf(itf),atol,ind,c,w)
+                if (global_error_flag/=0) return
+                call outtransf(EV,y,tau, MT%TransferData(:,EV%q_ix,itf))
+                itf=itf+1
+                if (j< Nz .and. itf <= CP%Transfer%num_redshifts .and. taunext > tautf(itf)) goto 102
+            end if
+        end if
+
+    end do
+
+    end subroutine GetEvol
+
     !end mod
 
     subroutine CalcScalarSources(EV,taustart)
@@ -1167,6 +1173,7 @@
     y=0
     call initial(EV,y, taustart)
     if (global_error_flag/=0) return
+
 
     tau=taustart
     ind=1
