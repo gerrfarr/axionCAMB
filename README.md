@@ -51,4 +51,4 @@ You should also be careful of galaxy bias if you use galaxy survey data, as disc
 ----------------------------------------------------------------------
 #### <a name="Modifications"></a>Modifications to this version of AxionCAMB
 
-This version of AxioCAMB differs from the version oen can find here (https://github.com/dgrin1/axionCAMB) in so far, that it takes command line input parameters and has the abbility to output the mode evolution.
+This version of AxioCAMB differs from the version one can find here (https://github.com/dgrin1/axionCAMB) in so far, that it takes command line input parameters and has the abbility to output the mode evolution.
