@@ -1052,7 +1052,7 @@
         character(LEN=1024) filename_ev, filename_dev, filename_as
         character(LEN=7) format_string
         real data_delta(9,MT%num_q_trans,100)
-        real data_a(MT%num_q_trans,100)
+        real data_a(2,100), data_a_dummy(2,100)
         
         if (global_error_flag/=0) return
 
@@ -1074,8 +1074,12 @@
             call GetNumEqns(EV)
 
 !           write(*,*) "q=",EV%q
-
-            call GetEvol(EV, tau, taustart, Nz, data_delta(:, q_ix, :), data_a(q_ix, :))
+            
+            if (q_ix==1) then
+                call GetEvol(EV, tau, taustart, Nz, data_delta(:, q_ix, :), data_a(:, :))
+            else
+                call GetEvol(EV, tau, taustart, Nz, data_delta(:, q_ix, :), data_a_dummy(:, :))
+            end if
 
         end do
 
@@ -1091,16 +1095,21 @@
             do j=1,Nz
                 write(1, format_string, advance='no') data_delta(9, q_ix, j)
                 write(2, format_string, advance='no') data_delta(8, q_ix, j)
-                write(3, format_string, advance='no') data_a(q_ix, j)
+
+                if (q_ix==1) then
+                    write(3, format_string, advance='no') data_a(1, j)
+                    write(3, format_string) data_a(2, j)
+                end if
+                
             end do
             write (1,*)''
             write (2,*)''
-            write (3,*)''
         end do
 
         close(1)
         close(2)
         close(3)
+        close(4)
         print *, 'Done computing mode evolution!'
 
     end subroutine
@@ -1108,15 +1117,16 @@
     subroutine GetEvol(EV, tau, taustart, Nz, Arr_delta, Arr_a)
     use Transfer
     type(EvolutionVars) EV
-    real(dl) tau, tauend, taustart, taunext
+    real(dl) tau, tauend, taustart, taunext, dtauda
     integer q_ix, j, ind, itf, Nz
     real(dl) c(24), w(EV%nvar,9), y(EV%nvar)
     real(dl) atol
-    real Arr_a(:)
+    real Arr_a(:,:)
     real Arr_delta(:,:)
+    external dtauda
 
     atol=tol/exp(AccuracyBoost-1)
-    if (CP%Transfer%high_precision) atol=atol/10000
+    if (CP%Transfer%high_precision) atol=atol/100
 
     ind=1
     itf=1
@@ -1127,7 +1137,8 @@
         call GaugeInterface_EvolveScal(EV,tau,y,tauend,atol,ind,c,w)
         if (global_error_flag/=0) return
         call outtransf(EV,y,tau,Arr_delta(:,j))
-        Arr_a(j)=y(1)
+        Arr_a(1,j)=y(1)
+        Arr_a(2,j)=1/(dtauda(y(1))*y(1)*y(1))
 
 102     if (CP%WantTransfer.and.itf <= CP%Transfer%num_redshifts) then
             taunext=taustart+(j+1)*(CP%tau0-taustart)/Nz
