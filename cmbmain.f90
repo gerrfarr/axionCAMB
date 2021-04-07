@@ -1128,6 +1128,8 @@
     atol=tol/exp(AccuracyBoost-1)
     if (CP%Transfer%high_precision) atol=atol/100
 
+    print *, 'the tolerance is set to', atol
+
     ind=1
     itf=1
     call initial(EV,y, tau)
